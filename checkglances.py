@@ -32,6 +32,10 @@ import getopt
 import xmlrpclib
 import json
 import gettext
+import socket
+
+socket.setdefaulttimeout(10) 
+
 gettext.install(__appname__)
 
 # Classes
@@ -45,6 +49,7 @@ class nagiospluginskeleton(object):
     """
         
     # http://nagiosplug.sourceforge.net/developer-guidelines.html
+
     return_codes = {'OK': 0,
                     'WARNING': 1, 
                     'CRITICAL': 2,
@@ -86,6 +91,12 @@ class nagiospluginskeleton(object):
         if (self.verbose):
             print(message)
 
+    def exit_and_print(self, service, status, code):
+        """
+        The end...
+        """
+        print("{service} {code}: {status}".format(service=service.upper(), code=code, status=status))
+        sys.exit(self.return_codes[code])
 
     def exit(self, code):
         """
@@ -101,6 +112,7 @@ class nagiosplugin(nagiospluginskeleton):
 
     statslist = ('cpu', 'load', 'mem', 'swap', 'process', 'net', 'diskio', 'fs')
     statsparamslist = ( 'net' , 'diskio' , 'fs')
+
 
     def syntax(self):
         # Display the standard syntax
@@ -397,11 +409,7 @@ class nagiosplugin(nagiospluginskeleton):
             if (critical is None): critical = 90
             checked_value = -1
             for disk in fs:
-                mnt_point = args['statparam']
-                # If the FS looks like it is a Windows drive, automatically add the Windows slash
-                if not args['statparam'].startswith("/") and not args['statparam'].endswith("\\"):
-                        mnt_point = args['statparam'].replace(":",":\\")
-                if disk['mnt_point'] == mnt_point:
+                if disk['mnt_point'] == args['statparam']:
                     checked_value = disk["percent"]
                     break
             if (checked_value == -1):
@@ -424,15 +432,19 @@ class nagiosplugin(nagiospluginskeleton):
         # Display the message
         self.log(_("Warning threshold: %s" % warning))
         self.log(_("Critical threshold: %s" % critical))
-        print(checked_message)
+        #print(checked_message)
 
         # Return code
+        #print("cv {} warning {} critical {}".format(checked_value, warning, critical))
         if (checked_value < warning): 
-            self.exit('OK')
-        elif (checked_value < critical):
-            self.exit('WARNING')
-        elif (checked_value < critical):
-            self.exit('CRITICAL')
+            code = 'OK'
+            self.exit_and_print(args['stat'], checked_message, code)
+        elif (checked_value > critical):
+            code = 'CRITICAL'
+            self.exit_and_print(args['stat'], checked_message, code)
+        elif (checked_value > warning):
+            code = 'WARNING'
+            self.exit_and_print(args['stat'], checked_message, code)
 
 
 # Main function
@@ -481,9 +493,9 @@ def main():
         elif opt in ("-P", "--password"):
             password = arg
         elif opt in ("-w", "--warning"):
-            warning = arg
+            warning = float(arg)
         elif opt in ("-c", "--critical"):
-            critical = arg
+            critical = float(arg)
         elif opt in ("-s", "--stat"):
             stat = arg
         elif opt in ("-e", "--statparam"):
@@ -522,6 +534,7 @@ def main():
     # Do the check
     plugin.check(host, warning, critical, port = port, password = password, \
                  stat = stat, statparam = statparam)
+
 
 
 # Main program
